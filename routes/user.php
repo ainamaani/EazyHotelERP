@@ -9,6 +9,6 @@ Route::get('/api/users', [UserController::class , 'handleFetchUsers']);
 
 Route::get('/api/users/{id}', [UserController::class , 'handleFetchSingleUser']);
 
-Route::get('/api/users/{id}/delete', [UserController::class , 'handleDeleteUser']);
+Route::delete('/api/users/{id}/delete', [UserController::class , 'handleDeleteUser']);
 
-Route::get('/api/users/{id}/change_role', [UserController::class , 'handleChangeRole']);
+Route::post('/api/users/{id}/change_role', [UserController::class , 'handleChangeRole']);
