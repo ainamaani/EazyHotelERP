@@ -46,4 +46,39 @@ class AuthController extends Controller
             return response()->json(['error' => 'Failed to login user: ' . $e->getMessage()]);
         }
     }
+
+    public function handleChangePassword(Request $request, $id){
+        try {
+            //validate incoming request data
+            $request->validate([
+                'current_password' => 'required|string|min:8',
+                'new_password' => 'required|string|min:8|confirmed',
+                'new_password_confirmation' => 'required|string|min:8'
+            ]);
+
+            // get user changing password
+            $user = User::find($id);
+            // check if user exists
+            if(!$user){
+                return response()->json(['error' => 'User does not exist'], 400);
+            }
+
+            // check if current passwords match
+            $matches = Hash::check($request->input('current_password') , $user->password);
+            if(!$matches){
+                return response()->json(['error' => 'Incorrect current password'], 400);
+            }
+
+            // change the user's password
+            $user->password = Hash::make($request->input('new_password'));
+            $user->save();
+
+            // return a response
+            return response()->json(['message' => 'Password changed successfully'], 200);
+
+        } catch (\Exception $e) {
+            //throw $e;
+            return response()->json(['error' => 'Failed to change passwords: ' . $e->getMessage()]);
+        }
+    }
 }
