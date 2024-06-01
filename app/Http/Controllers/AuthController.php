@@ -2,9 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\ResetToken as MailResetToken;
+use App\Models\ResetToken;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
@@ -79,6 +83,67 @@ class AuthController extends Controller
         } catch (\Exception $e) {
             //throw $e;
             return response()->json(['error' => 'Failed to change passwords: ' . $e->getMessage()]);
+        }
+    }
+
+    public function handleGenerateResetToken(Request $request){
+
+        DB::beginTransaction();
+
+        try {
+            //validate the sent email
+            $request->validate([
+                'email' => 'required|email|exists:users,email'
+            ]);
+
+            // get user with that email
+            $user = User::where('email' , $request->input('email'))->first();
+
+            // generate token
+            $reset_token  = mt_rand(100000,999999);
+
+            // check if the code has already been sent to the same user
+            $exists = ResetToken::where('user_id' , $user->id)->first();
+
+            // replace it if it exists
+            if($exists){
+                $exists->reset_token = $reset_token;
+                $exists->save();
+                return response()->json(['message' => 'Another has been sent to you via email'], 200);
+
+                // send email
+                Mail::to($request->input('email'))->send(new MailResetToken($user , $reset_token));
+            }
+
+            // create in the database
+            ResetToken::create([
+                'user_id' => $user->id,
+                'reset_token' => $reset_token
+            ]);
+
+            // send email
+            Mail::to($user->email)->send(new MailResetToken($user , $reset_token));
+
+            DB::commit();
+
+
+        } catch (\Exception $e) {
+            //throw $e;
+            DB::rollBack();
+            return response()->json(['error' => 'Failed to generate a reset token: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function handleFetchResetTokens(){
+        try {
+            //fetch reset tokens
+            $tokens = ResetToken::all();
+            // send a response
+            return response()->json($tokens , 200);
+
+        } catch (\Exception $e) {
+            //throw $e;
+            return response()->json(['error' => 'Failed to fetch reset tokens: ' . $e->getMessage()], 500);
         }
     }
 }
