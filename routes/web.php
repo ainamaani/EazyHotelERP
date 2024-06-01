@@ -13,3 +13,4 @@ Route::get('/token', function () {
 
 // include other route files
 require __DIR__.'/user.php';
+require __DIR__.'/auth.php';
