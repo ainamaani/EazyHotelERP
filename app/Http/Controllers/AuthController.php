@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
@@ -86,53 +87,57 @@ class AuthController extends Controller
         }
     }
 
-    public function handleGenerateResetToken(Request $request){
+    public function handleGenerateResetToken(Request $request)
+{
+    DB::beginTransaction();
 
-        DB::beginTransaction();
+    try {
+        // Validate the sent email
+        $request->validate([
+            'email' => 'required|email|exists:users,email'
+        ]);
 
-        try {
-            //validate the sent email
-            $request->validate([
-                'email' => 'required|email|exists:users,email'
-            ]);
+        // Get user with that email
+        $user = User::where('email', $request->input('email'))->first();
 
-            // get user with that email
-            $user = User::where('email' , $request->input('email'))->first();
+        // Generate token
+        $reset_token = mt_rand(100000, 999999);
 
-            // generate token
-            $reset_token  = mt_rand(100000,999999);
+        // Check if the code has already been sent to the same user
+        $exists = ResetToken::where('user_id', $user->id)->first();
 
-            // check if the code has already been sent to the same user
-            $exists = ResetToken::where('user_id' , $user->id)->first();
+        // Replace it if it exists
+        if ($exists) {
+            $exists->reset_token = $reset_token;
+            $exists->save();
 
-            // replace it if it exists
-            if($exists){
-                $exists->reset_token = $reset_token;
-                $exists->save();
-                return response()->json(['message' => 'Another has been sent to you via email'], 200);
-
-                // send email
-                Mail::to($request->input('email'))->send(new MailResetToken($user , $reset_token));
-            }
-
-            // create in the database
-            ResetToken::create([
-                'user_id' => $user->id,
-                'reset_token' => $reset_token
-            ]);
-
-            // send email
-            Mail::to($user->email)->send(new MailResetToken($user , $reset_token));
+            // Send email
+            Mail::to($request->input('email'))->send(new MailResetToken($user, $reset_token));
 
             DB::commit();
 
-
-        } catch (\Exception $e) {
-            //throw $e;
-            DB::rollBack();
-            return response()->json(['error' => 'Failed to generate a reset token: ' . $e->getMessage()], 500);
+            return response()->json(['message' => 'Another token has been sent to you via email'], 200);
         }
+
+        // Create a new record in the database
+        ResetToken::create([
+            'user_id' => $user->id,
+            'reset_token' => $reset_token
+        ]);
+
+        // Send email
+        Mail::to($user->email)->send(new MailResetToken($user, $reset_token));
+
+        DB::commit();
+
+        return response()->json(['message' => 'Reset token has been sent to you via email'], 200);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('Failed to generate a reset token: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to generate a reset token: ' . $e->getMessage()], 500);
     }
+}
+
 
     public function handleFetchResetTokens(){
         try {
@@ -144,6 +149,49 @@ class AuthController extends Controller
         } catch (\Exception $e) {
             //throw $e;
             return response()->json(['error' => 'Failed to fetch reset tokens: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function handleResetPassword(Request $request){
+        DB::beginTransaction();
+        try {
+            //validate the incoming data
+            $request->validate([
+                'email' => 'required|email|exists:users,email',
+                'token' => 'required|integer|exists:reset_tokens,reset_token|digits:6',
+                'password' => 'required|string|min:8|confirmed',
+                'password_confirmation' => 'required|string|min:8'
+            ]);
+
+            // get user with that email
+            $user = User::where('email' , $request->input('email'))->first();
+            
+            // Get the reset token record associated with the user
+            $reset_password_user = ResetToken::where('user_id', $user->id)->first();
+
+
+            if($reset_password_user->reset_token != $request->input('token')){
+                return response()->json(['error' => 'Incorrect reset token'], 400);
+            }
+
+            // set the password
+            $user->password = Hash::make($request->input('password'));
+            $user->save();
+
+            // delete the reset code record
+            $reset_password_user->delete();
+            
+            DB::commit();
+            
+            // return a success response
+            return response()->json(['message' => 'Password reset successful'], 200);
+
+            
+
+        } catch (\Exception $e) {
+            //throw $e;
+            DB::rollBack();
+            return response()->json(['error' => 'Failed to reset password: ' . $e->getMessage()]);
         }
     }
 }
