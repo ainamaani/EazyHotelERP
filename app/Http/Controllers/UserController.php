@@ -2,13 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\WelcomeGuest;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\DB;
 
 class UserController extends Controller
 {
     //
     public function handleSignUp(Request $request){
+        DB::beginTransaction();
+
         try {
             //validate the incoming date
             $request->validate([
@@ -27,12 +32,20 @@ class UserController extends Controller
                 'role' => $request->input('role')
             ]);
 
+            if($user->role == 'guest'){
+                // send email
+                Mail::to($user->email)->send(new WelcomeGuest($user));
+            }
+
+            DB::commit();
+
             // return a success message after user creation
             return response()->json(['message' => 'User created successfully: ' . $user], 201);
 
 
         } catch (\Exception $e) {
             //throw $e;
+            DB::rollBack();
             return response()->json(['error' => 'Failed to sign up new user: ' .$e->getMessage()], 500);
         }
     }
