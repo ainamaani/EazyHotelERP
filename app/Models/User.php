@@ -61,4 +61,8 @@ class User extends Authenticatable implements JWTSubject
     public function resetToken(){
         return $this->hasOne(ResetToken::class);
     }
+
+    public function guest(){
+        return $this->hasOne(Guest::class);
+    }
 }
